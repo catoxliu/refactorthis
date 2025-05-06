@@ -243,5 +243,102 @@ namespace RefactorThis.Domain.Tests
 
 			Assert.AreEqual( "invoice is now partially paid", result );
 		}
+
+		[Test]
+		public void ProcessPayment_Should_ThrowException_When_InvoiceHasZeroAmountWithExistingPayments()
+		{
+			var repo = new InvoiceRepository();
+			var invoice = new Invoice(repo)
+			{
+				Amount = 0,
+				AmountPaid = 5,
+				Payments = new List<Payment> { new Payment { Amount = 5 } }
+			};
+			repo.Add(invoice);
+
+			var paymentProcessor = new InvoiceService(repo);
+			var payment = new Payment();
+
+			Assert.Throws<InvalidOperationException>(() => paymentProcessor.ProcessPayment(payment),
+				"The invoice is in an invalid state, it has an amount of 0 and it has payments.");
+		}
+
+		[Test]
+		public void ProcessPayment_Should_AddTaxAmount_When_FirstPaymentOnStandardInvoice()
+		{
+			var repo = new InvoiceRepository();
+			var invoice = new Invoice(repo)
+			{
+				Amount = 100,
+				AmountPaid = 0,
+				Payments = new List<Payment>(),
+				Type = InvoiceType.Standard
+			};
+			repo.Add(invoice);
+
+			var paymentProcessor = new InvoiceService(repo);
+			var payment = new Payment { Amount = 50, };
+
+			paymentProcessor.ProcessPayment(payment);
+
+			// Tax should be 14% of payment amount
+			Assert.AreEqual(7.0m, invoice.TaxAmount);
+		}
+
+		[Test]
+		public void ProcessPayment_Should_NotAddTaxAmount_When_PartialPaymentOnStandardInvoice()
+		{
+			var repo = new InvoiceRepository();
+			var invoice = new Invoice(repo)
+			{
+				Amount = 100,
+				AmountPaid = 50,
+				TaxAmount = 7.0m, // Assuming 14% tax on first payment of 50
+				Payments = new List<Payment> { new Payment { Amount = 50 } },
+				Type = InvoiceType.Standard
+			};
+			repo.Add(invoice);
+
+			var paymentProcessor = new InvoiceService(repo);
+			var payment = new Payment { Amount = 25 };
+
+			paymentProcessor.ProcessPayment(payment);
+
+			// Tax should remain the same
+			Assert.AreEqual(7.0m, invoice.TaxAmount);
+		}
+
+		[Test]
+		public void ProcessPayment_Should_AlwaysAddTaxAmount_When_CommercialInvoice()
+		{
+			var repo = new InvoiceRepository();
+			var invoice = new Invoice(repo)
+			{
+				Amount = 100,
+				AmountPaid = 50,
+				TaxAmount = 7.0m,
+				Payments = new List<Payment> { new Payment { Amount = 50 } },
+				Type = InvoiceType.Commercial
+			};
+			repo.Add(invoice);
+
+			var paymentProcessor = new InvoiceService(repo);
+			var payment = new Payment { Amount = 25 };
+
+			paymentProcessor.ProcessPayment(payment);
+
+			// Additional tax should be added (14% of 25 = 3.5)
+			Assert.AreEqual(10.5m, invoice.TaxAmount);
+		}
+
+		[Test]
+		public void ProcessPayment_Should_HandleNullPaymentReference()
+		{
+			var repo = new InvoiceRepository();
+			var paymentProcessor = new InvoiceService(repo);
+			var payment = new Payment { Reference = null };
+
+			Assert.Throws<InvalidOperationException>(() => paymentProcessor.ProcessPayment(payment));
+		}
 	}
 }
