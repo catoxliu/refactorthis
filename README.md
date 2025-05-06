@@ -23,4 +23,5 @@ The overall objective is to refactor the code and keep the tests passing.  There
 * Let your hiring rep know your refactoring task is ready for review.
 
 
-
+## Tips
+* If you have installed "Unreal Test Adapter" or any UnrealEngine extensions for your Visual Studio, make sure you uninstall them firstly, otherwise you could get [errors](https://developercommunity.visualstudio.com/t/Could-not-find-test-executor-with-URI-e/10753392?sort=newest&topics=visual+studio+2017) running the tests.
