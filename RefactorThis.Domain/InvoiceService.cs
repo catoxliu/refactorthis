@@ -13,6 +13,12 @@ namespace RefactorThis.Domain
 			_invoiceRepository = invoiceRepository;
 		}
 
+		private enum PaymentStatus
+		{
+			FirstPayment,
+			PartialPayment,
+		}
+
 		public string ProcessPayment( Payment payment )
 		{
 			var inv = _invoiceRepository.GetInvoice( payment.Reference );
@@ -35,8 +41,9 @@ namespace RefactorThis.Domain
 				}
 			}
 
-			bool isIncludeTax = false;
+			var responseMessage = string.Empty;
 
+			// Already partially paid invoice
 			if ( inv.Payments != null && inv.Payments.Any( ) )
 			{
 				if ( inv.Payments.Sum( x => x.Amount ) != 0 && inv.Amount == inv.Payments.Sum( x => x.Amount ) )
@@ -44,45 +51,23 @@ namespace RefactorThis.Domain
 					SaveInvoice(inv);
 					return "invoice was already fully paid";
 				}
-				else if ( inv.Payments.Sum( x => x.Amount ) != 0 && payment.Amount > ( inv.Amount - inv.AmountPaid ) )
+				
+				if ( inv.Payments.Sum( x => x.Amount ) != 0 && payment.Amount > ( inv.Amount - inv.AmountPaid ) )
 				{
 					SaveInvoice(inv);
 					return "the payment is greater than the partial amount remaining";
 				}
-				
-				if ( ( inv.Amount - inv.AmountPaid ) == payment.Amount )
-				{
-					switch ( inv.Type )
-					{
-						case InvoiceType.Standard:
-							isIncludeTax = false;
-							break;
-						case InvoiceType.Commercial:
-							isIncludeTax = true;
-							break;
-						default:
-							throw new ArgumentOutOfRangeException( );
-					}
-					ProcessInvoice( inv, payment, isIncludeTax );
-					SaveInvoice(inv);
-					return "final partial payment received, invoice is now fully paid";
-					
-				}
 
-				switch ( inv.Type )
-				{
-					case InvoiceType.Standard:
-						isIncludeTax = false;
-						break;
-					case InvoiceType.Commercial:
-						isIncludeTax = true;
-						break;
-					default:
-						throw new ArgumentOutOfRangeException( );
+				if ( ( inv.Amount - inv.AmountPaid ) == payment.Amount )
+				{	
+					responseMessage = "final partial payment received, invoice is now fully paid";	
 				}
-				ProcessInvoice( inv, payment, isIncludeTax );
-				SaveInvoice(inv);
-				return "another partial payment received, still not fully paid";
+				else 
+				{
+					responseMessage = "another partial payment received, still not fully paid";
+				}
+                ProcessPaymentInternal( inv, payment, PaymentStatus.PartialPayment );
+				return responseMessage;
 			}
 
 			if ( payment.Amount > inv.Amount )
@@ -90,39 +75,25 @@ namespace RefactorThis.Domain
 				SaveInvoice(inv);
 				return "the payment is greater than the invoice amount";
 			}
-			else if ( inv.Amount == payment.Amount ) // fully paid invoice
-			{
-				switch ( inv.Type )
-				{
-					case InvoiceType.Standard:
-						isIncludeTax = true;
-						break;
-					case InvoiceType.Commercial:
-						isIncludeTax = true;
-						break;
-					default:
-						throw new ArgumentOutOfRangeException( );
-				}
-				ProcessInvoice( inv, payment, isIncludeTax );
-				SaveInvoice(inv);
-				return "invoice is now fully paid";
-			}
 
-			// Partially paid invoice
-			switch ( inv.Type )
+			if ( inv.Amount == payment.Amount )
 			{
-				case InvoiceType.Standard:
-					isIncludeTax = true;
-					break;
-				case InvoiceType.Commercial:
-					isIncludeTax = true;
-					break;
-				default:
-					throw new ArgumentOutOfRangeException( );
+				responseMessage = "invoice is now fully paid";
 			}
-			ProcessInvoice( inv, payment, isIncludeTax );
-			SaveInvoice(inv);
-			return "invoice is now partially paid";
+			else
+			{
+				responseMessage = "invoice is now partially paid";
+			}
+			
+            ProcessPaymentInternal( inv, payment, PaymentStatus.FirstPayment );
+			return responseMessage;
+		}
+
+		private void ProcessPaymentInternal( Invoice invoice, Payment payment, PaymentStatus paymentStatus )
+		{
+			bool isIncludeTax = ProcessTax( invoice.Type, paymentStatus );
+			ProcessInvoice( invoice, payment, isIncludeTax );
+			SaveInvoice(invoice);
 		}
 
 		private void SaveInvoice( Invoice invoice )
@@ -138,6 +109,25 @@ namespace RefactorThis.Domain
 				invoice.TaxAmount += payment.Amount * 0.14m;
 			}
 			invoice.Payments.Add( payment );
+		}
+
+		private bool ProcessTax (InvoiceType invoiceType, PaymentStatus paymentStatus)
+		{
+			switch ( invoiceType )
+			{
+				case InvoiceType.Standard:
+					// for standard invoice, tax is included only for the first payment
+					if ( paymentStatus == PaymentStatus.FirstPayment )
+					{
+						return true;
+					}
+					return false;
+				case InvoiceType.Commercial:
+					// commercial invoice always includes tax
+					return true;
+				default:
+					throw new ArgumentOutOfRangeException( );
+			}
 		}
 	}
 }
