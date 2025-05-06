@@ -18,6 +18,11 @@ namespace RefactorThis.Domain
 			FirstPayment,
 			PartialPayment,
 		}
+		
+		// TODO:
+		//  I don't know why the invoice needs to be saved even though there's nothing changed in this process.
+		//  Let's assume there's no need to save the invoice if we don't call ProcessPaymentInternal (no changes to the invoice),
+		//  Then we can have a PaymentValidator function here to put all the exceptions in that function to just return messages or throw errors.
 
 		public string ProcessPayment( Payment payment )
 		{
